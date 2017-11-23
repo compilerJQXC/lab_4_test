@@ -1,4 +1,4 @@
-﻿#编译原理PL0报告
+﻿#编译原理PL0报告    
 
 ---
 ##pl0.h的相关改动
@@ -297,14 +297,52 @@ if (++i)
 	}
 ```
 至此，词法部分添加结束
+###对语法框架的修改
+我们为了表示方便，对程序框架做了一些修改：
+每一条语句后都有分号
+begin-end后没有分号，在这里可以将begin-end当作C中的{}
+首先，我们改动begin-end,主要目标是移除分号的判断
+```c
+else if (sym == SYM_BEGIN)
+{ // block
+	getsym();
+	/*此时的fsys集合已经有了分号和end，这是无意义的*/
+	set1 = createset(SYM_SEMICOLON, SYM_END, SYM_NULL);
+	set = uniteset(set1, fsys);
+	statement(set);
+	while (inset(sym, statbegsys))
+	{
+		statement(set);
+	} // while
+	destroyset(set1);
+	destroyset(set);
+	if (sym == SYM_END)
+	{
+		getsym();
+	}
+	else
+	{
+		error(17); //  'end' expected.
+	}
+}
+```
+然后我们在相应的语句后添加分号判别符
+```c
+if (sym == SYM_SEMICOLON)
+{
+	getsym();
+}
+/*为了for中的右括号*/
+else if (sym != SYM_RPAREN)
+{
+	error(22);
+}
+```
+
 ###扩展PL0中的条件
 ####设计重要原则
 在这里我们有一个重要设计原则，即保证一致性，我们在设计语法单元函数的时候需要遵循以下原则：
 进入每一个语法单位处理这个程序之前，其第一个单词已经读出，退出时，应该读入下一个语法单元的第一个单词。
-除此之外，我们还需要认识到，在我们下面的程序中：
-语句后面没有分号！
-语句序列后面有分号！
-语句不等于语句序列！！！
 ####逻辑算符的实现
 #####逻辑算符&&和||的添加和实现
 相关函数：condition(),conditions_or(),conditions_and()，interpret（）
@@ -495,7 +533,7 @@ void arrayDecl()
 		else 	// sym == SYM_LEFTSPAREN
 		{
 			arrayDim[temp_adx]++;	//数组的维数增加1
-			adx++
+			adx++;
 			arrayDim[adx] = num;	//存储数组对应维数的大小
 			getsym();
 		}
@@ -793,15 +831,15 @@ void procedureCall(symset fsys)
 	void expression_orbit(symset fsys);
 	int i;
 	mask *mk;
-	if (sym == SYM_IDENTIFIER || sym == SYM_NUMBER)//合法的符号 
+	if (inset(sym,facbegsys))// 
 	{
-		expression_orbit(statbegsys);
+		expression_orbit(uniteset(createset(SYM_COMMA, SYM_RPAREN, SYM_NULL),fsys));
 		procedureCall(fsys);
-		test(createset(SYM_COMMA, SYM_RPAREN, SYM_NULL), fsys, 27);
 	}
 	else if (sym == SYM_COMMA)
 	{
-		if (presym != SYM_IDENTIFIER && presym != SYM_NUMBER)
+		/*
+		if (presym != SYM_IDENTIFIER && presym != SYM_NUMBER && presym != SYM_INC && presym != SYM_DEC)
 		{
 			printf("Error in procedureCall 2\n");
 			error(26);
@@ -811,10 +849,14 @@ void procedureCall(symset fsys)
 			getsym();
 			procedureCall(fsys);
 		}
+		*/
+		getsym();
+		procedureCall(fsys);
 	}
 	else if (sym == SYM_RPAREN)
 	{
-		if (presym != SYM_IDENTIFIER && presym != SYM_LPAREN && presym != SYM_NUMBER && presym != SYM_RIGHTSPAREN && presym != SYM_RPAREN)
+		/*
+		if (presym != SYM_IDENTIFIER && presym != SYM_LPAREN && presym != SYM_NUMBER && presym != SYM_RIGHTSPAREN && presym != SYM_RPAREN && presym != SYM_INC && presym != SYM_DEC)
 		{
 			printf("Error in procedureCall 3\n");
 			error(26);
@@ -825,6 +867,9 @@ void procedureCall(symset fsys)
 			getsym();
 			return;
 		}  // for return value
+		*/
+		gen(INT, 0, 1);
+		getsym();
 	}
 }
 ```
@@ -877,7 +922,8 @@ int i, j=0, cx1, cx2, cx3[100];
 /*j和cx3是新定义的数组和变量，j用来确定需要跳转的语句数目，cx3用来存储上述代码位置*/
 ```
 ```c
-/*代码块功能：读入if-elif-else并进行分析，
+/*
+代码块功能：读入if-elif-else并进行分析，
 通过回填技术完成各个跳转指令
 */
 else if (sym == SYM_IF)
@@ -947,8 +993,7 @@ else if (sym == SYM_EXIT)
       ...
       } // main
 ```
-
-      ```c
+```c
       #define CXMAX      500    // size of code array
       #define ENDCX	   499
       ```
@@ -1140,6 +1185,7 @@ else {		//table[i].kind == ID_VARIABLE
 	}
 	else if (sym==SYM_INC)
 	{
+	    gen(LOD, level - mk->level, mk->address);
 		gen(LOD, level - mk->level, mk->address);
 		gen(LIT, 0, 1);
 		gen(OPR, 0, OPR_ADD);
@@ -1148,6 +1194,7 @@ else {		//table[i].kind == ID_VARIABLE
 	}
 	else if (sym == SYM_DEC)
 	{
+	    gen(LOD, level - mk->level, mk->address);
 		gen(LOD, level - mk->level, mk->address);
 		gen(LIT, 0, 1);
 		gen(OPR, 0, OPR_MIN);

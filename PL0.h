@@ -17,22 +17,22 @@
 
 enum symtype
 {
-	SYM_NULL,
+	SYM_NULL,//0
 	SYM_IDENTIFIER,
 	SYM_NUMBER,
 	SYM_PLUS,
 	SYM_MINUS,
-	SYM_TIMES,
+	SYM_TIMES,//5
 	SYM_SLASH,
 	SYM_ODD,
 	SYM_EQU,
 	SYM_NEQ,
-	SYM_LES,
+	SYM_LES,//10
 	SYM_LEQ,
 	SYM_GTR,
 	SYM_GEQ,
 	SYM_LPAREN,
-	SYM_RPAREN,
+	SYM_RPAREN,//15
 	SYM_COMMA,
 	SYM_SEMICOLON,
 	SYM_PERIOD,
@@ -113,7 +113,7 @@ char* err_msg[] =
 	/* 14 */    "There must be an identifier to follow the 'call'.",
 	/* 15 */    "A constant or variable can not be called.",
 	/* 16 */    "'then' expected.",
-	/* 17 */    "';' or 'end' expected.",
+	/* 17 */    "'end' expected.",
 	/* 18 */    "'do' expected.",
 	/* 19 */    "Incorrect symbol.",
 	/* 20 */    "Relative operators expected.",

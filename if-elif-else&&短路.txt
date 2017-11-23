@@ -3,7 +3,9 @@ var i;
 begin
   i:=2;
   if(i>1||i++)
-  i:=5
+  i--;
+  elif(i>0)
+  i:=7;
   else
-  i:=4
+  i:=4;
 end.
