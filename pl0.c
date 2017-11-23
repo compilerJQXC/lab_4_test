@@ -2,7 +2,6 @@
 
 #pragma warning(disable:4996)
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +9,7 @@
 
 #include "PL0.h"
 #include "set.c"
+
 
 //////////////////////////////////////////////////////////////////////
 // print error message.
@@ -203,12 +203,12 @@ void getsym(void)
 			getch();
 			if (sym == SYM_PLUS && ch == '+')
 			{
-				sym = SYM_DPLUS;
+				sym = SYM_INC;
 				getch();
 			}
 			else if (sym == SYM_MINUS&&ch == '-')
 			{
-				sym = SYM_DMINUS;
+				sym = SYM_DEC;
 				getch();
 			}
 		}
@@ -252,6 +252,7 @@ void test(symset s1, symset s2, int n)
 	if (!inset(sym, s1))
 	{
 		error(n);
+		printf("\nnow is %d\n", sym);
 		s = uniteset(s1, s2);
 		while (!inset(sym, s))
 			getsym();
@@ -261,7 +262,6 @@ void test(symset s1, symset s2, int n)
 
   //////////////////////////////////////////////////////////////////////
 int dx;  // data allocation index
-int pcount = -2;
 
 // enter object(constant, variable or procedre) into table.
 /*参数k:欲登陆到符号表的类型*/
@@ -329,7 +329,135 @@ int position(char* id)
 	while (strcmp(table[--i].name, id) != 0);
 	return i;
 } // position
+//数组登入符号表
+void enterArray()
+{
+	mask *mk;
+	table[tx].kind = ID_ARRAY;//将当前变量的类型定义为数组
+	mk = (mask *)&table[tx];
+	mk->level = level;
+	mk->address = dx-1;		//在enter符号表的时候dx已经++了
+	mk->arrayAdd = ++adx;	//当前数组的个数
+	temp_adx = adx;			//temp_adx永远指向数组的维数
+	arrayDim[adx] = 0;		//数组的维数置0
+}
+void arrayDecl()
+{
+	if (presym == SYM_LEFTSPAREN)
+	{
+		if (sym != SYM_NUMBER)
+		{
+			printf("expected number when declare array.\n");
+			err++;
+			return;
+		}
+		else 	// sym == SYM_LEFTSPAREN
+		{
+			arrayDim[temp_adx]++;	//数组的维数增加1
+			adx++;
+			arrayDim[adx] = num;	//存储数组对应维数的大小
+			getsym();
+		}
+		if (sym != SYM_RIGHTSPAREN)
+		{
+			printf("expected rightsparen here while declare array at dim %d\n", arrayDim[temp_adx]);
+			err++;
+			return;
+		}
+		else
+		{
+			getsym();
+			arrayDecl();
+		}
+	}
+	else if (presym == SYM_RIGHTSPAREN)
+	{
+		if (sym == SYM_LEFTSPAREN)
+		{
+			getsym();
+			arrayDecl();
+		}
+		else // ; or ,
+		{
+			int count = 1;
+			int i = 1;
+			for(i = 1; i <= arrayDim[temp_adx]; i++)
+			{
+				count *= arrayDim[temp_adx + i];
+			}//计算数组所需的空间大小
+			dx += count - 1;
+			return;
+		}
+	}
+	else
+	{
+		printf("expected '[' or ']'\n");
+		err++;
+		getsym();
+		return;
+	}
+}
+/*传入数组声明在符号表中的位置
+动作：将数组元素相对于基地址的元素置于栈顶
+*/
+void calAdd(int i)
+{
+	void expression_orbit(symset fsys);
+	mask *mk = (mask *)&table[i];
+	int temp = mk->arrayAdd;
 
+	if (sym == SYM_LEFTSPAREN)//左中括号
+	{
+		if (presym != SYM_IDENTIFIER && presym != SYM_RIGHTSPAREN)
+		{
+			printf("expected identifier or rightsparen after leftsparen\n");
+			err++;
+		}
+		else
+		{
+			getsym();
+			expression_orbit(uniteset(createset(SYM_RIGHTSPAREN, SYM_NULL),statbegsys));
+			readDim++;//已经读入的数组的维数
+			gen(OPR, 0, OPR_ADD);//先加
+			if (readDim == arrayDim[temp])
+			{
+				// gen(LODARR,0,mk->address); //LODARR undeclared!
+				if (sym != SYM_RIGHTSPAREN)
+				{
+					printf("expected rightsparen after expression\n");
+					err++;
+					return;
+				}
+				else
+				{
+					getsym();
+					return;
+				}
+			}
+			else
+			{
+				gen(LIT, 0, arrayDim[temp + readDim + 1]);
+				gen(OPR, 0, OPR_MUL);//再乘
+				if (sym != SYM_RIGHTSPAREN)
+				{
+					printf("expected rightsparen after expression\n");
+					err++;
+					return;
+				}
+				else
+				{
+					getsym();
+					calAdd(i);
+				}
+			}
+		} //else
+	}
+	else
+	{
+		printf("expected leftsparen\n");
+		return;
+	}
+}
  //////////////////////////////////////////////////////////////////////
 /*常量声明赋值过程*/
 void constdeclaration()
@@ -369,6 +497,12 @@ void vardeclaration(void)
 	{
 		enter(ID_VARIABLE);
 		getsym();
+		if (sym == SYM_LEFTSPAREN)
+		{
+			getsym();
+			enterArray();
+			arrayDecl();
+		}
 	}
 	else
 	{
@@ -443,11 +577,12 @@ void listcode(int from, int to)
 
 void procedureCall(symset fsys)
 {
+	void expression_orbit(symset fsys);
 	int i;
 	mask *mk;
 	if (sym == SYM_IDENTIFIER || sym == SYM_NUMBER)// 
 	{
-		expr_orbit(statbegsys);
+		expression_orbit(statbegsys);
 		procedureCall(fsys);
 		test(createset(SYM_COMMA, SYM_RPAREN, SYM_NULL), fsys, 27);
 	}
@@ -508,20 +643,55 @@ void factor(symset fsys)
 				case ID_CONSTANT:
 					/*如果标识符对应的是常量，值为val，生成LIT指令，将值放在栈顶*/
 					gen(LIT, 0, table[i].value);
+					getsym();
+					break;
+				case ID_ARRAY:
+					getsym();
+					gen(LIT, 0, 0);
+					readDim = 0;//初始化
+					calAdd(i);
+					mk = (mask *)&table[i];
+					gen(LODARR, level - mk->level, mk->address);
 					break;
 				case ID_VARIABLE:
 					/*如果标识符是变量名，生成LOD指令*/
 					/*把位于当前层次的偏移地址为address的值放在栈顶*/
 					mk = (mask*)&table[i];
 					gen(LOD, level - mk->level, mk->address);
+					getsym();
+					/*如果遇到++*/
+					if (sym == SYM_INC)
+					{
+						gen(LOD, level - mk->level, mk->address);//将变量的值置于栈顶
+						gen(LIT, 0, 1);//常数置于栈顶
+						gen(OPR, 0, OPR_ADD);//相加
+						gen(STO, level - mk->level, mk->address);//将栈顶的值赋予变量
+						getsym();
+					}
+					else if (sym == SYM_DEC)
+					{
+						gen(LOD, level - mk->level, mk->address);
+						gen(LIT, 0, 1);
+						gen(OPR, 0, OPR_MIN);
+						gen(STO, level - mk->level, mk->address);
+						getsym();
+					}
 					break;
 				case ID_PROCEDURE:
-					/*因子处理是过程名：出错*/
-					error(21); // Procedure identifier can not be in an expression.
+					set = uniteset(fsys, createset(SYM_LPAREN, SYM_RPAREN, SYM_SEMICOLON, SYM_NULL));
+					getsym();
+					test(createset(SYM_LPAREN, SYM_NULL), set, 28);//There must be an '(' after procedure"
+					if (sym == SYM_LPAREN)
+					{
+						getsym();
+						procedureCall(set);
+						gen(CAL, level - mk->level, mk->address);
+					}
+					destroyset(set);
+					test(createset(SYM_SEMICOLON, SYM_NULL), fsys, 10);//"';' expected."
 					break;
 				} // switch
 			}
-			getsym();
 		}
 		else if (sym == SYM_NUMBER)
 		{
@@ -557,14 +727,56 @@ void factor(symset fsys)
 			/*生成指令，将栈顶元素取反*/
 			gen(OPR, 0, OPR_NEG);
 		}
-		else if (sym == SYM_NOT)
+		else if (sym == SYM_NOT) 
 		{
 			getsym();
 			expression_orbit(fsys);
 			/*生成指令，添加下面的非*/
 			gen(OPR, 0, OPR_NOT);
 		}
-		test(fsys, createset(SYM_LPAREN, SYM_NULL), 23);
+		else if (sym == SYM_INC) // ++
+		{
+			getsym();
+			if (sym != SYM_IDENTIFIER)
+			{
+				printf("expected id here \n");
+				err++;
+				getsym();
+			}
+			else
+			{
+				int i = position(id);
+				mask *mk = (mask *)&table[i];
+				gen(LOD, level - mk->level, mk->address);//将变量值置于栈顶
+				gen(LIT, 0, 1);//常数置于栈顶
+				gen(OPR, 0, OPR_ADD);//相加
+				gen(STO, level - mk->level, mk->address);//将栈顶的值赋予变量
+				gen(LOD, level - mk->level, mk->address);//将变量值置于栈顶
+				getsym();
+			}
+		}
+		else if (sym == SYM_DEC)
+		{
+			getsym();
+			if (sym != SYM_IDENTIFIER)
+			{
+				printf("expected id here \n");
+				err++;
+				getsym();
+			}
+			else
+			{
+				int i = position(id);
+				mask *mk = (mask *)&table[i];
+				gen(LOD, level - mk->level, mk->address);
+				gen(LIT, 0, 1);
+				gen(OPR, 0, OPR_MIN);
+				gen(STO, level - mk->level, mk->address);
+				gen(LOD, level - mk->level, mk->address);
+				getsym();
+			}
+		}
+		test(fsys, createset(SYM_LPAREN, SYM_RPAREN, SYM_NULL), 23);
 	} // if
 } // factor
 
@@ -685,7 +897,7 @@ void condition(symset fsys)
 		destroyset(set);
 		if (!inset(sym, relset))
 		{
-			error(20);
+			/*error(20);*/ // 删去这里的出错判断，令条件泛化为表达式
 		}
 		else
 		{
@@ -743,10 +955,54 @@ void conditions_or(symset fsys)
 	}
 	destroyset(set);
 }
+void short_condition_and(symset fsys)
+{
+	int cxTemp[1000], cxTempCount;
+	cxTempCount = 0;
+	condition(uniteset(createset(SYM_AND, SYM_NULL), fsys));
+	cxTemp[++cxTempCount] = cx;
+	gen(JZS, 0, 0);
+	while (sym == SYM_AND)
+	{
+		getsym();
+		gen(BAC, 0, 1);
+		condition(uniteset(createset(SYM_AND, SYM_NULL), fsys));
+		cxTemp[++cxTempCount] = cx;
+		gen(JZS, 0, 0);
+	}
+	int i;
+	for (i = cxTempCount; i >= 1; i--)
+	{
+		code[cxTemp[i]].a = cx;
+	}
+
+}
+
+void short_condition_or(symset fsys)
+{
+	int cxTemp[1000], cxTempCount;
+	cxTempCount = 0;
+	short_condition_and(uniteset(createset(SYM_OR, SYM_NULL), fsys));
+	cxTemp[++cxTempCount] = cx;
+	gen(JNZS, 0, 0);
+	while (sym == SYM_OR)
+	{
+		getsym();
+		gen(BAC, 0, 1);
+		short_condition_and(uniteset(createset(SYM_OR, SYM_NULL), fsys));
+		cxTemp[++cxTempCount] = cx;
+		gen(JNZS, 0, 0);
+	}
+	int i;
+	for (i = cxTempCount; i >= 1; i--)
+	{
+		code[cxTemp[i]].a = cx;
+	}
+}
   //////////////////////////////////////////////////////////////////////
 void statement(symset fsys)
 {
-	int i, cx1, cx2;
+	int i, j=0, cx1, cx2, cx3[100];
 	symset set1, set;
 	int retOffset;
 	if (sym == SYM_RETURN)
@@ -760,16 +1016,9 @@ void statement(symset fsys)
 			retOffset = mk->address;
 		}
 		getsym();
-		expr_andbit(fsys);
+		expression_orbit(fsys);
 		gen(STO, 0, -1);
 		gen(RET, 0, retOffset); //2017.10.30
-		if (sym != SYM_SEMICOLON)
-		{
-			printf("expected ; in 896 but sym here is %d\n", sym);
-			err++;
-			getsym();
-		}
-		else getsym();
 	}
 	else if (sym == SYM_IDENTIFIER)
 	{ // variable assignment
@@ -783,7 +1032,7 @@ void statement(symset fsys)
 			mk = (mask*)&table[i];
 			getsym();
 			set = uniteset(fsys, createset(SYM_LPAREN, SYM_RPAREN, SYM_SEMICOLON, SYM_NULL));
-			test(createset(SYM_LPAREN, SYM_NULL), set, 28);
+			test(createset(SYM_LPAREN, SYM_NULL), set, 28);//There must be an '(' after procedure"
 			if (sym == SYM_LPAREN)
 			{
 				getsym();
@@ -791,27 +1040,106 @@ void statement(symset fsys)
 				gen(CAL, level, mk->address); // 2017.10.30 level - mk->level change to level
 			}
 			destroyset(set);
+			test(createset(SYM_SEMICOLON, SYM_NULL), fsys, 10);//"';' expected."
+		}
+		else if (table[i].kind == ID_ARRAY)
+		{
+			getsym();
+			gen(LIT, 0, 0);
+			readDim = 0;
+			calAdd(i);
+			mk = (mask*)&table[i];
+			if (sym == SYM_BECOMES)
+			{
+				getsym();
+				expression_orbit(uniteset(createset(SYM_RIGHTSPAREN,SYM_NULL),fsys));
+				gen(STOARR, level - mk->level, mk->address);
+			}
+			else
+			{
+				error(13); // ':=' expected.
+			}
 		}
 		else if (table[i].kind != ID_VARIABLE)
 		{
 			error(12); // Illegal assignment.
 			i = 0;
 		}
+		else {		//table[i].kind == ID_VARIABLE
+			getsym();
+			mk = (mask*)&table[i];
+			if (sym == SYM_BECOMES)
+			{
+				getsym();
+				expression_orbit(fsys);
+				/*层次差+偏移量寻址*/
+				if (i)
+				{
+					gen(STO, level - mk->level, mk->address);
+				}
+			}
+			else if (sym==SYM_INC)
+			{
+				gen(LOD, level - mk->level, mk->address);
+				gen(LIT, 0, 1);
+				gen(OPR, 0, OPR_ADD);
+				gen(STO, level - mk->level, mk->address);
+				getsym();
+			}
+			else if (sym == SYM_DEC)
+			{
+				gen(LOD, level - mk->level, mk->address);
+				gen(LIT, 0, 1);
+				gen(OPR, 0, OPR_MIN);
+				gen(STO, level - mk->level, mk->address);
+				getsym();
+			}
+			else
+			{
+				error(13); // "':=','++'or'--' expected.",
+			}
+		}
+	}
+	else if (sym == SYM_INC)
+	{
 		getsym();
-		if (sym == SYM_BECOMES)
+		if (sym != SYM_IDENTIFIER)
 		{
+			printf("expected id here \n");
+			err++;
 			getsym();
 		}
 		else
 		{
-			error(13); // ':=' expected.
-		}
-		expression_orbit(fsys);
-		mk = (mask*)&table[i];
-		/*层次差+偏移量寻址*/
-		if (i)
-		{
+			int i = position(id);
+			mask *mk = (mask *)&table[i];
+			gen(LOD, level - mk->level, mk->address);
+			gen(LIT, 0, 1);
+			gen(OPR, 0, OPR_ADD);
 			gen(STO, level - mk->level, mk->address);
+			gen(LOD, level - mk->level, mk->address);
+			getsym();
+		}
+	}
+	else if (sym == SYM_DEC)
+	{
+		getsym();
+		if (sym != SYM_IDENTIFIER)
+		{
+			printf("expected id here \n");
+			err++;
+			getsym();
+		}
+		else
+		{
+			int i = position(id);
+			mask *mk = (mask *)&table[i];
+			gen(LOD, level - mk->level, mk->address);
+			gen(LIT, 0, 1);
+			gen(OPR, 0, OPR_MIN);
+			gen(STO, level - mk->level, mk->address);
+			gen(LOD, level - mk->level, mk->address);
+			getsym();
 		}
 	}
 /*	else if (sym == SYM_CALL)
@@ -842,8 +1170,142 @@ void statement(symset fsys)
 		}
 	}
 */
+	else if (sym == SYM_EXIT)
+	{
+		getsym();
+		if (sym != SYM_LPAREN)
+		{
+			printf("expected leftsparen after exit \n");
+			err++;
+		}
+		getsym();
+		if (sym != SYM_RPAREN)
+		{
+			printf("expected rightsparen after exit \n");
+			err++;
+		}
+		getsym();
+		gen(JMP, 0, ENDCX);
+	}
+	else if (sym == SYM_FOR)
+	{
+		instruction codeTemp[100];
+		int cxTemp, tempCodeCount;
+		int CFalseAdd, ENext;
+		getsym();
+		if (sym != SYM_LPAREN)
+		{
+			printf("expected '(' after for declaration\n");
+			err++;
+		}
+		else
+		{
+			getsym();
+			if (sym != SYM_IDENTIFIER)/*在for中第一个语句只能是标识符打头*/
+			{
+				printf("expected identifier in the first field of for declaration\n");
+				err++;
+			}
+			else  // E1
+			{
+				statement(uniteset(createset(SYM_SEMICOLON, SYM_NULL), fsys));
+			}
+			if (sym != SYM_SEMICOLON)
+			{
+				printf("expected ';' after the first field in for statement\n");
+				err++;
+			}
+			else  // Condition
+			{
+				ENext = cx;
+				getsym();
+				short_condition_or(fsys);
+				CFalseAdd = cx;
+				gen(JZ, 0, 0);
+			}
+			if (sym != SYM_SEMICOLON)
+			{
+				printf("expected ';' after the second field in for statement\n");
+				err++;
+			}
+			else  // E2
+			{
+				cxTemp = cx;
+				getsym();
+				if (sym != SYM_IDENTIFIER && sym != SYM_DEC && sym != SYM_INC)
+				{
+					printf("expected identifier in the first field of for declaration\n");
+					err++;
+				}
+				statement(uniteset(createset(SYM_SEMICOLON, SYM_RPAREN, SYM_NULL), fsys));
+				tempCodeCount = cx - cxTemp;
+				/*实现代码移动*/
+				int j;
+				for ( j = 0; j<tempCodeCount; j++)
+				{
+					codeTemp[j].f = code[cxTemp + j].f;
+					codeTemp[j].l = code[cxTemp + j].l;
+					codeTemp[j].a = code[cxTemp + j].a;
+				}
+				cx = cxTemp;
+			}
+			if (sym != SYM_RPAREN)
+			{
+				printf("expected SYM_RPAREN\n");
+				err++;
+			}
+			else // body
+			{
+				getsym();
+				statement(fsys);
+				int i;
+				for (i = 0; i<tempCodeCount; i++)
+				{
+					code[cx].f = codeTemp[i].f;
+					code[cx].l = codeTemp[i].l;
+					code[cx++].a = codeTemp[i].a;
+				}
+				gen(JMP, 0, ENext);
+				code[CFalseAdd].a = cx;
+			}
+		}
+	}
 	else if (sym == SYM_IF)
 	{ // if statement
+		j = 0;
+		while (sym == SYM_IF || sym == SYM_ELIF)
+		{
+			getsym();
+			if (sym != SYM_LPAREN)
+			{
+				error(28);
+			}
+			getsym();
+			short_condition_or(uniteset(createset(SYM_RPAREN, SYM_ELIF, SYM_ELSE, SYM_NULL), fsys));
+			if (sym != SYM_RPAREN)
+			{
+				error(22);
+			}
+			getsym();
+			cx1 = cx;
+			gen(JZ, 0, 0);//为0则跳转
+			statement(uniteset(createset(SYM_RPAREN, SYM_ELIF, SYM_ELSE, SYM_NULL), fsys));
+			cx3[j] = cx;//记录每一个的elif和if内的语句结束的地址，如果执行了这些语句，需要跳转到最后
+			gen(JMP, 0, 0);
+			code[cx1].a = cx;//回填当前if或者elif
+			j++;
+		}
+		printf("now %d:\n", sym);
+		if (sym == SYM_ELSE)
+		{
+			getsym();
+			statement(fsys);
+		}
+		for (i = 0; i < j; i++)
+		{
+			code[cx3[i]].a = cx;//if-elif-else 的末尾
+		}
+		/*
 		getsym();
 		set1 = createset(SYM_THEN, SYM_DO, SYM_NULL);
 		set = uniteset(set1, fsys);
@@ -862,6 +1324,7 @@ void statement(symset fsys)
 		gen(JPC, 0, 0);
 		statement(fsys);
 		code[cx1].a = cx;
+		*/
 	}
 	else if (sym == SYM_BEGIN)
 	{ // block
@@ -897,13 +1360,23 @@ void statement(symset fsys)
 	{ // while statement
 		cx1 = cx;
 		getsym();
+		if (sym != SYM_LPAREN)
+		{
+			error(28);//"Missing '(' "
+		}
+		getsym();
 		set1 = createset(SYM_DO, SYM_NULL);
 		set = uniteset(set1, fsys);
-		conditions_or(set);
+		short_condition_or(set);
 		destroyset(set1);
 		destroyset(set);
+		if (sym != SYM_RPAREN)
+		{
+			error(22);
+		}
+		getsym();
 		cx2 = cx;
-		gen(JPC, 0, 0);
+		gen(JZ, 0, 0);
 		if (sym == SYM_DO)
 		{
 			getsym();
@@ -916,7 +1389,7 @@ void statement(symset fsys)
 		gen(JMP, 0, cx1);
 		code[cx2].a = cx;
 	}
-	test(fsys, phi, 19);//"Incorrect symbol."
+	test(uniteset(createset(SYM_RETURN, SYM_SEMICOLON, SYM_IF, SYM_ELSE, SYM_ELIF, SYM_NULL),fsys), phi, 19);//"Incorrect symbol."
 } // statement
 
   //////////////////////////////////////////////////////////////////////
@@ -957,6 +1430,7 @@ void block(symset fsys)
 		getsym();
 		/*为了错误恢复，引入set*/
 		set = uniteset(fsys, createset(SYM_RPAREN, SYM_SEMICOLON, SYM_NULL));
+		pcount = -2;
 		paraList(set);
 		destroyset(set);
 		enterPara("return", ID_RETURN);
@@ -968,7 +1442,6 @@ void block(symset fsys)
 		{
 			error(22);//"Missing ')'."
 		}
-		enterPara("return", ID_RETURN);
 	}
 	/*循环处理所有的声明部分*/
 	do
@@ -1227,11 +1700,6 @@ void interpret()
 		case JMP:
 			pc = i.a;
 			break;
-		case JPC:
-			if (stack[top] == 0)
-				pc = i.a;
-			top--;
-			break;
 /*添加下面的指令*/
 		case RET:
 			stack[b + i.a] = stack[b - 1];
@@ -1239,13 +1707,64 @@ void interpret()
 			top = b + i.a;
 			b = stack[b + 1];
 			break;
+		case STOARR:
+			/*将次栈顶的值作为偏移量*/
+			stack[base(stack, b, i.l) + i.a + stack[top - 1]] = stack[top];
+			// for(int k=0;k<20;k++)printf("%-3d ",stack[k]);
+			// printf("\n");
+			printf("%d\n the offset is %d\n", stack[top],stack[top-1]);
+			top -= 2;
+			break;
+		case LODARR:
+			stack[top] = stack[base(stack, b, i.l) + i.a + stack[top]];
+			// for(int k=0;k<20;k++)printf("%-3d ",stack[k]);
+			break;
+		case JZ:
+			if (stack[top] == 0)
+				pc = i.a;
+			top--;
+			break;
+		case JZS:
+			if (stack[top] == 0)
+				pc = i.a;
+			break;
+		case JNZS:
+			if (stack[top] != 0)
+				pc = i.a;
+			break;
+		case JNZ:
+			if (stack[top] != 0)
+				pc = i.a;
+			top--;
+			break;
+		case JE:
+			if (stack[top - 1] == stack[top])
+				pc = i.a;
+			break;
+		case JNE:
+			if (stack[top - 1] != stack[top])
+				pc = i.a;
+			break;
+		case JG:
+			if (stack[top - 1] > stack[top])
+				pc = i.a;
+			break;
+		case JGE:
+			if (stack[top - 1] >= stack[top])
+				pc = i.a;
+			break;
+		case JL:
+			if (stack[top - 1] < stack[top])
+				pc = i.a;
+			break;
+		case JLE:
+			if (stack[top - 1] <= stack[top])
+				pc = i.a;
+			break;
+		case BAC:
+			top -= i.a;
+			break;
 		} // switch
-
-		
-		for (z=0; z <20; z++) {
-			printf("%d ", stack[z]);
-		}
-		printf("\n");
 	} while (pc);
 
 	printf("End executing PL/0 program.\n");
@@ -1266,14 +1785,18 @@ void main()
 		printf("File %s can't be opened.\n", s);
 		exit(1);
 	}
-
+	/*和exit相关*/
+	code[ENDCX].f = OPR;
+	code[ENDCX].l = 0;
+	code[ENDCX].a = OPR_RET;
+	
 	phi = createset(SYM_NULL);
 	relset = createset(SYM_EQU, SYM_NEQ, SYM_LES, SYM_LEQ, SYM_GTR, SYM_GEQ, SYM_NULL);
 
 	// create begin symbol sets
 	declbegsys = createset(SYM_CONST, SYM_VAR, SYM_PROCEDURE, SYM_NULL);
-	statbegsys = createset(SYM_BEGIN, SYM_CALL, SYM_IF, SYM_WHILE, SYM_RETURN, SYM_NULL);
-	facbegsys = createset(SYM_IDENTIFIER, SYM_NUMBER, SYM_LPAREN, SYM_MINUS, SYM_NOT ,SYM_NULL);
+	statbegsys = createset(SYM_BEGIN, SYM_CALL, SYM_IF, SYM_WHILE, SYM_RETURN,SYM_ELSE, SYM_INC, SYM_DEC, SYM_FOR, SYM_EXIT, SYM_NULL);
+	facbegsys = createset(SYM_IDENTIFIER, SYM_NUMBER, SYM_LPAREN, SYM_MINUS, SYM_NOT ,SYM_INC, SYM_DEC,SYM_NULL);
 
 	err = cc = cx = ll = 0; // initialize global variables
 	ch = ' ';

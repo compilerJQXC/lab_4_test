@@ -9,6 +9,7 @@
 #define MAXADDRESS 32767  // maximum address
 #define MAXLEVEL   32     // maximum depth of nesting block
 #define CXMAX      500    // size of code array
+#define ENDCX      499
 
 #define MAXSYM     30     // maximum number of symbols  
 
@@ -57,13 +58,12 @@ enum symtype
 	SYM_FOR,
 	SYM_AND,//&&
 	SYM_OR,//||
-	SYM_DPLUS,//++
-	SYM_DMINUS,//--
+	SYM_INC,//++
+	SYM_DEC,//--
 	SYM_ANDBIT,//&
 	SYM_ORBIT,//|
 	SYM_XOR,//&
 	SYM_MOD,//%
-	SYM_ARRAY
 };
 
 enum idtype
@@ -73,7 +73,7 @@ enum idtype
 
 enum opcode
 {
-	LIT, OPR, LOD, STO, CAL, INT, JMP, JPC, RET
+	LIT, OPR, LOD, STO, CAL, INT, JMP, JZ, RET, LODARR, STOARR, JNZ, JE, JNE, JG, JGE, JL, JLE, BAC, JZS, JNZS
 };
 
 enum oprcode
@@ -109,7 +109,7 @@ char* err_msg[] =
 	/* 10 */    "';' expected.",
 	/* 11 */    "Undeclared identifier.",
 	/* 12 */    "Illegal assignment.",
-	/* 13 */    "':=' expected.",
+	/* 13 */    "':=','++'or'--' expected.",
 	/* 14 */    "There must be an identifier to follow the 'call'.",
 	/* 15 */    "A constant or variable can not be called.",
 	/* 16 */    "'then' expected.",
@@ -124,7 +124,7 @@ char* err_msg[] =
 	/* 25 */    "The number is too great.",
 	/* 26 */    "There must be an identifier",
 	/* 27 */    "There must be an ','or')'",
-	/* 28 */    "There must be an '(' after procedure",
+	/* 28 */    "Missing '(' ",
 	/* 29 */    "",
 	/* 30 */    "",
 	/* 31 */    "",
@@ -144,6 +144,8 @@ int  cx;         // index of current instruction to be generated.
 int presym;
 int  level = 0;
 int  tx = 0;
+int dimDecl = 0;
+int readDim = 0;
 
 char line[80];
 
@@ -180,17 +182,18 @@ char csym[NSYM + 1] =
 	']','^','%'
 };
 
-#define MAXINS   8
+#define MAXINS   21
 /*机器指令集合*/
 char* mnemonic[MAXINS] =
 {
-	"LIT", "OPR", "LOD", "STO", "CAL", "INT", "JMP", "JPC"
+	"LIT", "OPR", "LOD", "STO", "CAL", "INT", "JMP", "JZ","RET","LODARR","STOARR","JNZ","JE","JNE","JG","JGE","JL","JLE","BAC","JZS","JNZS"
 };
 /*符号表 CONSTANT*/
 typedef struct
 {
 	char name[MAXIDLEN + 1];
 	int  kind;
+	int arrayAdd;
 	int  value;
 } comtab;
 
@@ -200,10 +203,16 @@ typedef struct
 {
 	char  name[MAXIDLEN + 1];
 	int   kind;
+	int   arrayAdd;
 	short level;
 	short address;
 } mask;
 
 FILE* infile;
+
+int arrayDim[1000];//用来存储数组的维数和相应维数的大小
+int adx = 0;		//当前数组的个数
+int temp_adx = 0;
+int pcount = 0;
 
 // EOF PL0.h
