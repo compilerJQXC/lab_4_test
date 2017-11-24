@@ -146,6 +146,7 @@ void getsym(void)
 		{
 			cc = ll;
 			getch();
+			getsym();
 		}
 		else if (ch == '*') 
 		{
@@ -1534,6 +1535,7 @@ void block(symset fsys)
 			savedTx = tx;
 			set1 = createset(SYM_SEMICOLON, SYM_NULL);
 			set = uniteset(set1, fsys);
+			set = uniteset(set, declbegsys);
 			block(set);
 			destroyset(set1);
 			destroyset(set);
