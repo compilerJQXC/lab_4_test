@@ -493,11 +493,11 @@ if (!inset(sym, relset))
 #####条件的短路计算
 
 ####添加数组
-在前面已经说过，在pl0.h中我们定义了三个变量，这将会运用到我们接下来的数组操作中
+在前面已经说过，在pl0.h中我们定义了四个变量，这将会运用到我们接下来的数组操作中
 ```c
 int readDim = 0;    //当前已经读入的数组的维数
 int arrayDim[1000]; //用来存储数组的维数和相应维数的大小
-int adx = 0;		//数组的个数
+int adx = 0;		//当前数组大小
 int temp_adx=0;     //永远指向数组的维数，方便声明
 ```
 #####数组声明
@@ -513,7 +513,7 @@ void enterArray()
 	mk = (mask *)&table[tx];
 	mk->level = level;
 	mk->address = dx-1;		//在enter符号表的时候dx已经++了
-	mk->arrayAdd = ++adx;	//当前总数组的个数
+	mk->arrayAdd = ++adx;	//当前arrayDim的大小
 	temp_adx = adx;         //永远指向当前数组的维数
 	arrayDim[adx] = 0;		//数组的维数置0
 }
@@ -1055,19 +1055,10 @@ else if (sym == SYM_FOR)
 		{
 			statement(uniteset(createset(SYM_SEMICOLON, SYM_NULL), fsys));
 		}
-		if (sym != SYM_SEMICOLON)
-		{
-			printf("expected ';' after the first field in for statement\n");
-			err++;
-		}
-		else  // Condition
-		{
-			ENext = cx;
-			getsym();
-			short_condition_or(fsys);
-			CFalseAdd = cx;
-			gen(JZ, 0, 0);
-		}
+		ENext = cx;//Condition
+		short_condition_or(fsys);
+		CFalseAdd = cx;
+		gen(JZ, 0, 0);
 		if (sym != SYM_SEMICOLON)
 		{
 			printf("expected ';' after the second field in for statement\n");
@@ -1094,25 +1085,17 @@ else if (sym == SYM_FOR)
 			}
 			cx = cxTemp;
 		}
-		if (sym != SYM_RPAREN)
+		getsym(); //body
+		statement(fsys);
+		int i;
+		for (i = 0; i<tempCodeCount; i++)
 		{
-			printf("expected SYM_RPAREN\n");
-			err++;
+			code[cx].f = codeTemp[i].f;
+			code[cx].l = codeTemp[i].l;
+			code[cx++].a = codeTemp[i].a;
 		}
-		else // body
-		{
-			getsym();
-			statement(fsys);
-			int i;
-			for (i = 0; i<tempCodeCount; i++)
-			{
-				code[cx].f = codeTemp[i].f;
-				code[cx].l = codeTemp[i].l;
-				code[cx++].a = codeTemp[i].a;
-			}
-			gen(JMP, 0, ENext);
-			code[CFalseAdd].a = cx;
-		}
+		gen(JMP, 0, ENext);
+		code[CFalseAdd].a = cx;
 	}
 }
 ```
@@ -1281,3 +1264,85 @@ else if (sym == SYM_DEC)
 	}
 }
 ```
+####错误恢复
+对于PL0错误恢复的处理，我们采用关键字规则和镇定规则，为了从实例中认识PL0的错误恢复部分，我们首先关注与错误恢复紧密相关的函数test：
+```c
+/*
+s1:当语法分析进入或退出某一语法单元时当前单词符合应属于的集合
+s2:在某一出错状态下，可恢复语法分析正常工作的补充单词集合
+n:出错信息编号，当当前符号不属于合法的 s1 集合时发出的出错信息
+*/
+void test(symset s1, symset s2, int n)
+{
+	symset s;
+
+	if (!inset(sym, s1))
+	{
+		error(n);
+		printf("\nnow is %d\n", sym);
+		s = uniteset(s1, s2);
+		while (!inset(sym, s))
+			getsym();
+		destroyset(s);
+	}
+} // test
+```
+然后我们开始分析错误恢复部分，首先看在调用block之前的main函数部分代码
+首先我们定义如下的symset集合作为常用判断集合
+```c
+phi = createset(SYM_NULL);
+relset = createset(SYM_EQU, SYM_NEQ, SYM_LES, SYM_LEQ, SYM_GTR, SYM_GEQ, SYM_NULL);
+declbegsys = createset(SYM_CONST, SYM_VAR, SYM_PROCEDURE, SYM_NULL);
+statbegsys = createset(SYM_BEGIN, SYM_CALL, SYM_IF, SYM_WHILE, SYM_RETURN,SYM_ELSE,SYM_IDENTIFIER, SYM_INC, SYM_DEC, SYM_FOR, SYM_EXIT, SYM_NULL);
+facbegsys = createset(SYM_IDENTIFIER, SYM_NUMBER, SYM_LPAREN, SYM_MINUS, SYM_NOT ,SYM_INC, SYM_DEC,SYM_NULL);
+```
+以上定义的就是语句的合法开始集合，我们根据新构造的语法，对该集合做了如上的修改
+从main传入block（）的错误恢复集合：
+```c
+/*set是当前block的合法FIRST集和FOLLOW集，是block所有FIRST集&&FOLLOW集中除了分号和id的集合*/
+set1 = createset(SYM_PERIOD, SYM_NULL);
+set2 = uniteset(declbegsys, statbegsys);
+set = uniteset(set1, set2);
+block(set);
+```
+在block中调用block时，传入新函数的错误恢复集合
+```c
+/*此时的set集合增加了分号，因为层次数高的函数（声明的函数/过程）合法的FOLLOW集中有分号*/
+set1 = createset(SYM_SEMICOLON, SYM_NULL);
+set = uniteset(set1, fsys);
+block(set);
+```
+从上面的分析我们可以看出，所谓的错误恢复，就是在分析的过程中不断的向里添加合法的FIRST集合和FOLLOW集合，那么，test是如何工作的呢？我们以factor中的部分为例：
+```c
+/*factor开始*/
+test(facbegsys, fsys, 24); // The symbol can not be as the beginning of an expression.
+/*factor结束*/
+test(fsys, createset(SYM_LPAREN, SYM_RPAREN, SYM_NULL), 23);
+```
+如上所示，在进入一个语法单元开始分析的时候，会判断当前的符号是否是合法的开始符号集合，当当前的符号不是合法的开始符号集合，那么我们就向后读取，一直读到合法的开始符号集合或者后继符号集合，继续向下分析，在离开这个语法单元的时候，会判断当前的符号是否是合法的后继符号集合，如果不是，向后读取，一直读到合法的后继符号集合。这个过程在factor中体现的比较清楚，在我们添加语法相关代码时，时刻都在关注每次将合法的后继符号集合填入到相应位置，比如条件判断时：
+```c
+/*condition_and*/
+/*增加合法后继符号*/
+condition(uniteset(createset(SYM_AND, SYM_NULL), fsys));
+```
+
+```c
+/*增加合法的开始符号*/
+/*以paraList中的错误恢复为例*/
+首先定义set1和set
+set1 = createset(SYM_RPAREN, SYM_COMMA, SYM_NULL);
+set = createset(SYM_IDENTIFIER,SYM_RPAREN,SYM_NULL);//presym非标识符时的合法的开始符号
+else if (presym == SYM_IDENTIFIER)/*前一个符号是标识符*/
+{
+    /*在这里必须是合法的开始符号集合，否则报错*/
+	test(set1, fsys, 27);//There must be an ','or')'
+	if (sym == SYM_COMMA)
+	{
+		getsym();
+		paraList(fsys);
+
+	}
+	/*不是逗号的话返回*/
+}
+```
+诸如此类，我们借此实现错误恢复

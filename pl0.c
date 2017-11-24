@@ -696,7 +696,7 @@ void factor(symset fsys)
 						gen(CAL, level - mk->level, mk->address);
 					}
 					destroyset(set);
-					test(createset(SYM_SEMICOLON, SYM_NULL), fsys, 10);//"';' expected."
+					test(createset(SYM_SEMICOLON, SYM_LPAREN, SYM_NULL), fsys, 10);//"';' expected."
 					break;
 				} // switch
 			}
