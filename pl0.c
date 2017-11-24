@@ -696,7 +696,7 @@ void factor(symset fsys)
 						gen(CAL, level - mk->level, mk->address);
 					}
 					destroyset(set);
-					test(createset(SYM_SEMICOLON, SYM_LPAREN, SYM_NULL), fsys, 10);//"';' expected."
+					test(createset(SYM_SEMICOLON, SYM_LPAREN, SYM_COMMA, SYM_NULL), fsys, 10);//"';' expected."
 					break;
 				} // switch
 			}
@@ -1557,6 +1557,7 @@ void block(symset fsys)
 		dx = block_dx; //restore dx after handling procedure call!
 		set1 = createset(SYM_IDENTIFIER, SYM_NULL);
 		set = uniteset(statbegsys, set1);
+		set = uniteset(set, declbegsys);
 		test(set, declbegsys, 7);	//"Statement expected."
 		destroyset(set1);
 		destroyset(set);
