@@ -1,19 +1,17 @@
 const pi=3;
 var i,k[7][8],m[3];
 
-procedure func(j)
+procedure func(i,j)
 begin
- if(j=0)
+ if(j=0 || i=0)
   return 1;
  else
   begin
-  j:=j-1;
-  return func(j);
+  return func(--i,--j);
   end
 end;
 begin
   k[1][2]:=2;
   m[3]:=4;
-  i:=3;
-  i:=func(--i);
+  i:=func(k[1][2],m[3]);
 end.

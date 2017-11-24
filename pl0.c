@@ -1263,19 +1263,10 @@ void statement(symset fsys)
 			{
 				statement(uniteset(createset(SYM_SEMICOLON, SYM_NULL), fsys));
 			}
-			if (sym != SYM_SEMICOLON)
-			{
-				printf("expected ';' after the first field in for statement\n");
-				err++;
-			}
-			else  // Condition
-			{
-				ENext = cx;
-				getsym();
-				short_condition_or(fsys);
-				CFalseAdd = cx;
-				gen(JZ, 0, 0);
-			}
+			ENext = cx;//Condition
+			short_condition_or(fsys);
+			CFalseAdd = cx;
+			gen(JZ, 0, 0);
 			if (sym != SYM_SEMICOLON)
 			{
 				printf("expected ';' after the second field in for statement\n");
@@ -1302,25 +1293,17 @@ void statement(symset fsys)
 				}
 				cx = cxTemp;
 			}
-			if (sym != SYM_RPAREN)
+			getsym(); //body
+			statement(fsys);
+			int i;
+			for (i = 0; i<tempCodeCount; i++)
 			{
-				printf("expected SYM_RPAREN\n");
-				err++;
+				code[cx].f = codeTemp[i].f;
+				code[cx].l = codeTemp[i].l;
+				code[cx++].a = codeTemp[i].a;
 			}
-			else // body
-			{
-				getsym();
-				statement(fsys);
-				int i;
-				for (i = 0; i<tempCodeCount; i++)
-				{
-					code[cx].f = codeTemp[i].f;
-					code[cx].l = codeTemp[i].l;
-					code[cx++].a = codeTemp[i].a;
-				}
-				gen(JMP, 0, ENext);
-				code[CFalseAdd].a = cx;
-			}
+			gen(JMP, 0, ENext);
+			code[CFalseAdd].a = cx;
 		}
 	}
 	else if (sym == SYM_IF)

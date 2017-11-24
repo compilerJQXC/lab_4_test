@@ -1,0 +1,17 @@
+const pi=3;
+var i,j,k[7][8],m[3];
+
+procedure func(j)
+begin
+ if(j=0)
+  return 1;
+ else
+  begin
+  return 12;
+  end
+end;
+begin
+  exit();
+  i:=3;
+  i:=func(i);
+end.

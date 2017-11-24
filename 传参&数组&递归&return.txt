@@ -7,9 +7,7 @@ begin
   return 1;
  else
   begin
-  j:=j-1;
-  i:=i-1;
-  return func(i,j);
+  return func(--i,--j);
   end
 end;
 begin
