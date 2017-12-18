@@ -15,4 +15,5 @@ begin
   for(i:=0;i<10;i++)
        j := j+2;
   i:=j;
+  print(i);
 end.

@@ -1,0 +1,11 @@
+var i;
+
+procedure q(k,m,n)
+var a[3];
+begin
+  i := i + 1;
+  callstack();
+end;
+begin
+  q(1,2,3);
+end.

@@ -1,21 +1,25 @@
-var i;
-procedure p()
-begin
-  i := 2;
-end;
-procedure q()
+var i,b[3];
+
+procedure q(k,m,n)
+var a[3];
 begin
   i := i + 1;
+  callstack();
 end;
 begin
-  i := 1;
-  p();
-  q();
-  i:=2;
-  if(i>1||i++)
-  i--;
-  elif(i>0)
-  i:=7;
+var k,j;
+  k:=j:=i:=b[0]:=2;
+
+  if(i>2)
+  print(i);
+
+/*
+  elif(i>1||k++)
+  print(k);
+*/
+/*
   else
-  i:=4;
-end.
+  print(j);
+*/
+  q(1,2,3);
+end.  
